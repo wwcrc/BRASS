@@ -1,0 +1,151 @@
+.TH brass-group 1 "June 2012" "Brass" "Bioinformatics tools"
+.SH NAME
+brass-group \- find breakpoints by grouping discordant read pairs
+.\"
+.\" Copyright (C) 2010-2012 Genome Research Ltd.
+.\"
+.\" Author: John Marshall <jm18@sanger.ac.uk>
+.\"
+.\" This file is part of the Brass package.
+.\"
+.\" Brass is free software: you can redistribute it and/or modify it
+.\" under the terms of the GNU General Public License as published by the
+.\" Free Software Foundation; either version 3 of the License, or (at your
+.\" option) any later version.
+.\"
+.\" This program is distributed in the hope that it will be useful, but
+.\" WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+.\" or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+.\" for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License along
+.\" with this program.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+.SH SYNOPSIS
+.B brass-group
+.RI [ OPTIONS "]...\&"
+.RB [ -o
+.IR FILE "] " FILE ...
+.SH DESCRIPTION
+The
+.B brass-group
+tool scans the specified SAM or BAM files for interestingly-mapped read pairs,
+groups such read pairs by genomic location into clusters likely spanning
+breakpoints, and produces a textual description of these groups.
+Read pairs that are considered "interesting" are those in which the alignment
+record flags indicate that both reads have been mapped but the pair is not
+.I properly
+paired, generally because the two ends are mapped either to different
+reference chromosomes or to the same chromosome but with positions implying
+an implausible insert size.
+.P
+The input SAM/BAM files must be sorted by genomic location and have the mate
+flags and mate position fields filled in correctly, but need not be indexed.
+If
+.I FILE
+is a single hyphen ("-") or is absent,
+.B brass-group
+reads from standard input.
+.P
+The following options are accepted:
+.TP 4n
+.BI "-d " TYPE
+Discard read pairs or groups matching the condition \fITYPE\fP, which may be
+any of the conditions listed below.
+.TP
+.BI "-F " FILE
+Filter read pairs and annotate groups using features from \fIFILE\fP,
+which may be either a BED file or a list of ranges, one per line,
+optionally compressed with \fBgzip\fP(1) in either case.
+.TP
+.BI "-i " RANGE
+Discard read pairs in which either end lies within \fIRANGE\fP,
+which specifies a range of genomic locations as described below.
+.TP
+.BI "-I " FILE
+Discard read pairs in which either end lies within a range listed
+in \fIFILE\fP, which may be either a (compressed) BED file or list of ranges,
+as for the \fB-F\fP option.
+.TP
+.BI "-k " TYPE
+Keep read pairs or groups matching the condition \fITYPE\fP, which may be
+any of the conditions listed below.
+.TP
+.BI "-m " NUM
+Use \fINUM\fP as the maximum insert size for any read groups that do not
+specify their own value via an \fBMI\fP field in their \fB@RG\fP header.
+.TP
+.BI "-n " NUM
+Omit rearrangement groups containing fewer than \fINUM\fP read pairs.
+By default, groups consisting of only a single read pair are omitted.
+.TP
+.BI "-o " FILE
+Write the list of rearrangement groups to
+.I FILE
+rather than to standard output.
+.TP
+.BI "-q " NUM
+Discard read pairs with mapping quality less than \fINUM\fP.
+By default, the minimum mapping quality is 1, so read pairs with a \fBmapq\fP
+value of zero are discarded.
+.TP
+.BI "-s " NAME
+Associate reads that do not specify a read group with sample \fINAME\fP.
+Using this option also requires the use of the \fB-m\fP option to specify
+a maximum insert size for such read pairs.
+.IP
+By default, it is an error if any interestingly-mapped reads in the input
+do not specify a read group (i.e., have no \fBRG\fP field).
+.P
+The \fB-d\fP and \fB-k\fP options accept the following filtering conditions:
+.TP 4n
+.B insertion
+Read pairs that span what appear to be small intrachromosomal insertions,
+namely those whose \fBisize\fP field is smaller than the maximum insert size.
+(Discarded by default.)
+.TP
+.B repeat
+Read pairs that have either end lying within a listed repeat feature.
+(Discarded by default.)
+.TP
+.B repetitive
+Read pairs that have been marked as repetitively mapped.
+At present, this means those that have an \fBXT\fP value of "R", which is
+how \fBbwa\fP marks repetitively-mapped reads.
+(Kept by default.)
+.SS Ignoring regions
+Regions are specified as
+.IB rname : start - end
+which denotes a range of 1-based locations on a particular reference sequence.
+The numeric \fIstart\fP and \fIend\fP values may be omitted, defaulting to 1
+and the length of the reference sequence \fIrname\fP, respectively.
+If both are omitted, the punctuation may also be omitted; thus a region
+specified simply as \fIrname\fP denotes that entire reference sequence.
+.SS Output format
+FIXME Describe it.
+.SH LIMITATIONS
+At present, a maximum of two input files may be specified.  If more input files
+are to be grouped, they must be merged separately first and the resulting
+merged file supplied to
+.BR brass-group .
+.P
+At present, the \fB-q\fP and \fB-d repetitive\fP options consider only the
+relevant fields of the \fIfirst\fP read encountered in the input, namely the
+one of the pair at the lower genomic location.
+If the first read survives these filters but the later mate's \fBmapq\fP value
+is lower and below the threshold or it is repetitively mapped, the pair may
+well have already contributed to a group nonetheless.
+.SH SEE ALSO
+.IR bwa (1),
+.IR gzip (1),
+.IR make-repeat-file (1),
+.IR samcat (1)
+.TP
+http://genome.ucsc.edu/FAQ/FAQformat#format1
+The BED file format, including track lines
+.TP
+http://code.google.com/p/bedtools/
+The BEDTools User Manual describes the BEDPE format
+.TP
+http://samtools.sourceforge.net/
+The SAM file format specification

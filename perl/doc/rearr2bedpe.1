@@ -1,0 +1,36 @@
+.TH rearr2bedpe 1 "" "Cancer Genome Project" "Cancer Genome Project"
+.SH NAME
+rearr2bedpe \- convert group-rearrs default output to BEDPE format
+.SH SYNOPSIS
+.B rearr2bedpe
+.RI [ FILE "]..."
+.SH DESCRIPTION
+The \fBrearr2bedpe\fP utility acts as a filter, reading the specified files
+(or standard input if none are specified) and writing their contents to
+standard output, with rearrangement groups converted from \fBgroup-rearrs\fP's
+default output format to \fBbedtools\fP's BEDPE format.
+.P
+For each rearrangement group line, a BEDPE line is emitted as follows:
+.IP \(bu 2
+The \fIname\fP field is the name of the first read pair contributing to
+the group (i.e., the first read name from the first sample that has a
+non-zero read count);
+.IP \(bu 2
+The \fIscore\fP field is the total number of read pairs in the group;
+.IP \(bu 2
+There is one additional user-defined BEDPE field, containing the group's
+\fInotes\fP field.
+.P
+Comment lines (those whose first character is "#") are preserved.
+.P
+Note that features in BEDPE are represented "in-between" their coordinates,
+similarly to \fBexonerate\fP's native representation.
+Equivalently and more straightforwardly: BEDPE has 0-based start positions
+and 1-based end positions, which differs from the \fBgroup-rearrs\fP format.
+.SH SEE ALSO
+.IR exonerate (1),
+.IR group-rearrs (1)
+.P
+The description of the BEDPE format, to be found in the
+.B bedtools
+manual at <http://code.google.com/p/bedtools/>.

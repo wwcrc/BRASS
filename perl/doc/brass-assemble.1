@@ -1,0 +1,80 @@
+.TH brass-assemble 1 "November 2012" "Brass" "Bioinformatics tools"
+.SH NAME
+brass-assemble \- find exact breakpoints via local assembly
+.\"
+.\" Copyright (C) 2012 Genome Research Ltd.
+.\"
+.\" Author: John Marshall <jm18@sanger.ac.uk>
+.\"
+.\" This file is part of the Brass package.
+.\"
+.\" Brass is free software: you can redistribute it and/or modify it
+.\" under the terms of the GNU General Public License as published by the
+.\" Free Software Foundation; either version 3 of the License, or (at your
+.\" option) any later version.
+.\"
+.\" This program is distributed in the hope that it will be useful, but
+.\" WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+.\" or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+.\" for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License along
+.\" with this program.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+.SH SYNOPSIS
+.B brass-assemble
+.RI [ OPTIONS ]...\&
+.I BEDPE-FILE
+.RI [ BAM-FILE ]...
+.SH DESCRIPTION
+The \fBbrass-assemble\fP tool takes regions of interest from the specified
+BEDPE file, attempts to assemble reads near each of these regions from the
+specified BAM files, and scans the resulting assembly graphs for patterns
+corresponding to the underlying breakpoints.
+.P
+The input BAM files must be sorted (by genomic location) and indexed.
+Arguments denoting BAM files may be of the form
+.IB BAMFILE : BAIFILE
+specifying the index file to be used; otherwise, a \fB.bai\fP file must
+be present alongside the BAM file in the usual way.
+.P
+The following options are accepted:
+.TP 4n
+.BI "-o " FILE
+Write the list of events to \fIFILE\fP in the most-recently selected format.
+This option may be repeated to write up to one output in each format; if it
+is not used at all, a list of events is written to standard output in the
+last-selected format.
+.TP
+.BI "-O " FORMAT
+Write the next output stream in the specified \fIFORMAT\fP, which may
+be \fBbedpe\fP, \fBtab\fP (the initial default), \fBvcf\fP, or \fBlog\fP
+(for redirecting \fB-v\fP logging).
+.TP
+.BI "-r " TARGET
+Connect to an Exonerate server at \fITARGET\fP.
+.TP
+.BI "-T " DIR
+Use \fIDIR\fP for temporary working files.
+Defaults to \fBworking\fP within the current directory.
+.TP
+.B -v
+Display verbose progress logging; using multiple \fB-v\fP options further
+increases the verbosity.
+Messages are logged to a file specified via
+.B -O log -o
+.IR FILE ,
+or otherwise to standard output if any other \fB-o\fP options have been given,
+or to standard error otherwise.
+.SH SEE ALSO
+.IR brass-group (1),
+.IR exonerate-server (1)
+.TP
+http://www.ebi.ac.uk/~zerbino/velvet/
+The Velvet assembler for very short reads
+.TP
+http://genome.ucsc.edu/FAQ/FAQformat#format1
+The BED file format, including track lines
+.TP
+http://code.google.com/p/bedtools/
+The BEDTools User Manual describes the BEDPE format
