@@ -164,8 +164,8 @@ private:
   } read_stats;
 
   struct {
-    unsigned long total, small, supponly, emitted;
-    void clear() { total = small = supponly = emitted = 0; }
+    unsigned long total, small, stacked, supponly, emitted;
+    void clear() { total = small = stacked = supponly = emitted = 0; }
   } group_stats;
 
   // Returns true iff GROUP should be emitted; updates statistics accordingly.
@@ -280,6 +280,7 @@ void rearrangement_grouper::print_trailer() {
       << "#   Supplementary-only:\t" << group_stats.supponly << '\n';
   if (min_count >= 2)
     out<<"#   < " << min_count << " read pairs:\t" << group_stats.small << '\n';
+  out << "#   Stacked narrowly:\t" << group_stats.stacked << '\n';
 
   out << "#\n"
       << "# Total groups emitted:\t" << group_stats.emitted << '\n';
@@ -317,6 +318,12 @@ inline bool rearrangement_grouper::filter(rearr_group& group) {
 
   if (group.primary_count == 0) { group_stats.supponly++; return false; }
   if (group.total_count < min_count) { group_stats.small++; return false; }
+
+  if (group.readL.length() <= group.max_read_length + 1 ||
+      group.readH.length() <= group.max_read_length + 1) {
+    group_stats.stacked++;
+    return false;
+  }
 
   const alignment& aln = group.canonical;
 

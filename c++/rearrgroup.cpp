@@ -135,7 +135,10 @@ interval::interval(const alignment& aln, coord_t pos, int strand,
 rearr_group::rearr_group(alignment& aln, const interval& alnL,
 			 const interval& alnH, const readgroup_info& info,
 			 const readgroup_set& readgroups)
-  : overlapL(alnL), overlapH(alnH), max_insert(info.max_insert) {
+  : overlapL(alnL), overlapH(alnH),
+    readL(aln.pos(), aln.pos() + aln.length()),
+    readH(aln.mate_pos(), aln.mate_pos() + aln.length()),
+    max_insert(info.max_insert), max_read_length(aln.length()) {
 
   samples.assign(readgroups.samples().size(), per_sample());
   per_sample& sample = samples[info.sample_index];
@@ -159,8 +162,11 @@ void rearr_group::insert(const alignment& aln, const interval& alnL,
 
   overlapL *= alnL;
   overlapH *= alnH;
+  readL += interval(aln.pos(), aln.pos() + aln.length());
+  readH += interval(aln.mate_pos(), aln.mate_pos() + aln.length());
 
   if (max_insert < info.max_insert)  max_insert = info.max_insert;
+  if (max_read_length < aln.length())  max_read_length = aln.length();
 
   per_sample& sample = samples[info.sample_index];
   if (sample.readnames.insert(aln.qname()).second) {

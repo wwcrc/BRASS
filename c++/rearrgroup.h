@@ -98,11 +98,21 @@ struct interval {
   interval(const alignment& aln, coord_t pos, int strand,
 	   coord_t ref_length, const readgroup_info& info);
 
+  scoord_t length() const { return pos3 - pos5; }
+
   // Assigns the result of set intersection with RHS.  If this and RHS
   // do not intersect, the result is an empty interval with pos5 > pos3.
   interval& operator*= (const interval& rhs) {
     if (rhs.pos5 > pos5)  pos5 = rhs.pos5;
     if (rhs.pos3 < pos3)  pos3 = rhs.pos3;
+    return *this;
+  }
+
+  // Assigns an interval that covers the result of set union with RHS.
+  // If this and RHS intersect, this is just union; otherwise it's more.
+  interval& operator+= (const interval& rhs) {
+    if (rhs.pos5 < pos5)  pos5 = rhs.pos5;
+    if (rhs.pos3 > pos3)  pos3 = rhs.pos3;
     return *this;
   }
 };
@@ -138,9 +148,10 @@ public:
 
 //private: // FIXME  Decide on encapsulation of these fields
   alignment canonical;
-  interval overlapL, overlapH;
+  interval overlapL, overlapH, readL, readH;
   std::string notes;
   scoord_t max_insert;
+  int max_read_length;
 
   struct per_sample {
     int count;
