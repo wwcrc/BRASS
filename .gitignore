@@ -1,4 +1,6 @@
+*.inc
 *.o
+TAGS
 /perl/Makefile
 /cansam
 /bin/pindel
@@ -20,8 +22,8 @@
 /perl/perltidy.LOG
 /perl/MYMETA.json
 /perl/MYMETA.yml
-/perl/bin/augment-bam
-/perl/bin/brass-group
-/perl/bin/filterout-bam
+/c++/augment-bam
+/c++/brass-group
+/c++/filterout-bam
 /perl/reports
 
