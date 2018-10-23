@@ -142,6 +142,8 @@ rearr_group::rearr_group(alignment& aln, const interval& alnL,
   total_count = sample.count = 1;
   sample.readnames.assign(aln.qname_c_str(), aln.qname_length());
 
+  primary_count = (aln.flags() & (NONPRIMARY|SUPPLEMENTARY))? 0 : 1;
+
   canonical.swap(aln);
 }
 
@@ -165,6 +167,8 @@ void rearr_group::insert(const alignment& aln, const interval& alnL,
   sample.count++;
   if (! sample.readnames.empty())  sample.readnames += ';';
   sample.readnames.append(aln.qname_c_str(), aln.qname_length());
+
+  if (! (aln.flags() & (NONPRIMARY|SUPPLEMENTARY)))  primary_count++;
 }
 
 std::ostream& operator<< (std::ostream& out, const rearr_group& group) {

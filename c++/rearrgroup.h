@@ -147,7 +147,7 @@ public:
     per_sample() : count(0) { }
   };
   std::vector<per_sample> samples;
-  int total_count;
+  int total_count, primary_count;
 
   typedef std::vector<per_sample>::iterator sample_iterator;
   typedef std::vector<per_sample>::const_iterator const_sample_iterator;

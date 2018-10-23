@@ -164,8 +164,8 @@ private:
   } read_stats;
 
   struct {
-    unsigned long total, small, emitted;
-    void clear() { total = small = emitted = 0; }
+    unsigned long total, small, supponly, emitted;
+    void clear() { total = small = supponly = emitted = 0; }
   } group_stats;
 
   // Returns true iff GROUP should be emitted; updates statistics accordingly.
@@ -276,14 +276,10 @@ void rearrangement_grouper::print_trailer() {
   out << "#\n"
       << "# Total groups found:\t" << group_stats.total << '\n';
 
-  std::ostringstream s;
+  out << "# Rearrangement groups omitted due to being\n"
+      << "#   Supplementary-only:\t" << group_stats.supponly << '\n';
   if (min_count >= 2)
-    s << "#   < " << min_count << " read pairs:\t" << group_stats.small << '\n';
-
-  if (! s.str().empty())
-    out
-      << "# Rearrangement groups omitted due to being\n"
-      << s.str();
+    out<<"#   < " << min_count << " read pairs:\t" << group_stats.small << '\n';
 
   out << "#\n"
       << "# Total groups emitted:\t" << group_stats.emitted << '\n';
@@ -319,6 +315,7 @@ within(interval_multimap<feature>& features, const seqinterval& aln,
 inline bool rearrangement_grouper::filter(rearr_group& group) {
   group_stats.total++;
 
+  if (group.primary_count == 0) { group_stats.supponly++; return false; }
   if (group.total_count < min_count) { group_stats.small++; return false; }
 
   const alignment& aln = group.canonical;
