@@ -140,7 +140,7 @@ rearr_group::rearr_group(alignment& aln, const interval& alnL,
   samples.assign(readgroups.samples().size(), per_sample());
   per_sample& sample = samples[info.sample_index];
   total_count = sample.count = 1;
-  sample.readnames.assign(aln.qname_c_str(), aln.qname_length());
+  sample.readnames.insert(aln.qname());
 
   primary_count = (aln.flags() & (NONPRIMARY|SUPPLEMENTARY))? 0 : 1;
 
@@ -163,10 +163,10 @@ void rearr_group::insert(const alignment& aln, const interval& alnL,
   if (max_insert < info.max_insert)  max_insert = info.max_insert;
 
   per_sample& sample = samples[info.sample_index];
-  total_count++;
-  sample.count++;
-  if (! sample.readnames.empty())  sample.readnames += ';';
-  sample.readnames.append(aln.qname_c_str(), aln.qname_length());
+  if (sample.readnames.insert(aln.qname()).second) {
+    total_count++;
+    sample.count++;
+  }
 
   if (! (aln.flags() & (NONPRIMARY|SUPPLEMENTARY)))  primary_count++;
 }
@@ -186,9 +186,15 @@ std::ostream& operator<< (std::ostream& out, const rearr_group& group) {
   if (! group.notes.empty())  out << '\t' << group.notes;
   else  out << "\t.";
 
-  for (it = group.samples.begin(); it != group.samples.end(); ++it)
-    if (it->count > 0)  out << '\t' << it->readnames;
+  for (it = group.samples.begin(); it != group.samples.end(); ++it) {
+    std::set<string>::const_iterator rnit = it->readnames.begin();
+    if (rnit != it->readnames.end()) {
+      out << '\t' << *rnit;
+      for (++rnit; rnit != it->readnames.end(); ++rnit)
+	out << ';' << *rnit;
+    }
     else  out << "\t.";
+  }
 
   return out;
 }

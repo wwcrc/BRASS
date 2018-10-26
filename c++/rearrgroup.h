@@ -38,6 +38,7 @@
 
 #include <algorithm>
 #include <list>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -143,7 +144,7 @@ public:
 
   struct per_sample {
     int count;
-    std::string readnames;
+    std::set<std::string> readnames;
     per_sample() : count(0) { }
   };
   std::vector<per_sample> samples;
