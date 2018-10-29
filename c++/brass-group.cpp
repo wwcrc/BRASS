@@ -366,7 +366,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     if (flags & PROPER_PAIRED) { read_stats.proper++; continue; }
     if (flags & (UNMAPPED|MATE_UNMAPPED)) { read_stats.unmapped++; continue; }
     if (aln.mapq() < min_quality) { read_stats.low_quality++; continue; }
-    if (std::abs(aln.zpos() - aln.mate_zpos()) < 10) { read_stats.near_mate++; continue; }
+    if (aln.rindex() == aln.mate_rindex() && std::abs(aln.zpos() - aln.mate_zpos()) < 10) { read_stats.near_mate++; continue; }
 
     aln_ival.assign(aln.rname(), aln.zpos(), aln.zpos() + aln.length());
     mate_ival.assign(aln.mate_rname(),
