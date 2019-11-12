@@ -157,11 +157,11 @@ private:
   std::ostream& out;
 
   struct {
-    unsigned long total, proper, unmapped, low_quality, repeats, repetitive,
-		  ignored, insertion, near_mate;
+    unsigned long total, proper, unmapped, low_quality, low_mate_quality,
+		  repeats, repetitive, ignored, insertion, near_mate;
     void clear()
-      { total = proper = unmapped = low_quality = repeats = repetitive =
-	  ignored = insertion = near_mate = 0; }
+      { total = proper = unmapped = low_quality = low_mate_quality =
+	  repeats = repetitive = ignored = insertion = near_mate = 0; }
   } read_stats;
 
   struct {
@@ -266,7 +266,8 @@ void rearrangement_grouper::print_statistics(std::ostream& s, const char* p,
     << p << "  Near mate:\t\t" << read_stats.near_mate << '\n';
 
   if (min_quality > 0)
-    s << p << "  Low quality:\t" << (*p? "" : "\t") << read_stats.low_quality << '\n';
+    s << p << "  Low quality:\t" << (*p? "" : "\t") << read_stats.low_quality << '\n'
+      << p << "  Low mate quality:\t" << read_stats.low_mate_quality << '\n';
   if (discard_apparent_insertions)
     s << p << "  Small insertion:\t" << read_stats.insertion << '\n';
   if (discard_within_repeats)
@@ -376,6 +377,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     if (flags & PROPER_PAIRED) { read_stats.proper++; continue; }
     if (flags & (UNMAPPED|MATE_UNMAPPED)) { read_stats.unmapped++; continue; }
     if (aln.mapq() < min_quality) { read_stats.low_quality++; continue; }
+    if (aln.aux("MQ", 255) < min_quality) { read_stats.low_mate_quality++; continue; }
     if (aln.rindex() == aln.mate_rindex() && std::abs(aln.zpos() - aln.mate_zpos()) < 10) { read_stats.near_mate++; continue; }
 
     aln_ival.assign(aln.rname(), aln.zpos(), aln.zpos() + aln.length());
