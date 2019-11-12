@@ -137,7 +137,8 @@ public:
   void group_alignments(InputSamStream& in);
 
   void print_preamble(const collection& headers, const string& preamble);
-  void print_trailer();
+  void print_trailer() { out << "#\n"; print_statistics(out, "# ", "#\n"); }
+  void log_statistics(std::ostream& s) { print_statistics(s, "", "\n"); }
 
 private:
   readgroup_set readgroups;
@@ -182,6 +183,8 @@ private:
   // FIXME Once interval_multimap has const iterators etc, revert to const
   bool within_repeat(const seqinterval& aln)
     { return within(filters, aln, 10); }
+
+  void print_statistics(std::ostream& s, const char* prefix, const char* blank);
 };
 
 rearrangement_grouper::rearrangement_grouper(const options& opt,
@@ -254,36 +257,36 @@ void rearrangement_grouper::print_preamble(const collection& headers,
     out << "#SAMPLE\t" << i+1 << '\t' << samples[i] << '\n';
 }
 
-void rearrangement_grouper::print_trailer() {
-  out << "#\n"
-      << "# Total reads scanned:\t" << read_stats.total << '\n'
-      << "# Reads discarded due to being\n"
-      << "#   Properly paired:\t" << read_stats.proper << '\n'
-      << "#   (Half-)unmapped:\t" << read_stats.unmapped << '\n'
-      << "#   Near mate:\t\t" << read_stats.near_mate << '\n';
+void rearrangement_grouper::print_statistics(std::ostream& s, const char* p,
+					     const char* blank) {
+  s << p << "Total reads scanned:\t" << read_stats.total << '\n'
+    << p << "Reads discarded due to being\n"
+    << p << "  Properly paired:\t" << read_stats.proper << '\n'
+    << p << "  (Half-)unmapped:\t" << read_stats.unmapped << '\n'
+    << p << "  Near mate:\t\t" << read_stats.near_mate << '\n';
 
   if (min_quality > 0)
-    out<<"#   Low quality:\t" << read_stats.low_quality << '\n';
+    s << p << "  Low quality:\t" << (*p? "" : "\t") << read_stats.low_quality << '\n';
   if (discard_apparent_insertions)
-    out<<"#   Small insertion:\t" << read_stats.insertion << '\n';
+    s << p << "  Small insertion:\t" << read_stats.insertion << '\n';
   if (discard_within_repeats)
-    out<<"#   Repeat features:\t" << read_stats.repeats << '\n';
+    s << p << "  Repeat features:\t" << read_stats.repeats << '\n';
   if (discard_repeat_mapped)
-    out<<"#   Repeat-mapped:\t" << read_stats.repetitive << '\n';
+    s << p << "  Repeat-mapped:\t" << read_stats.repetitive << '\n';
   if (! ignores.empty())
-    out<<"#   In ignored regions:\t" << read_stats.ignored << '\n';
+    s << p << "  In ignored regions:\t" << read_stats.ignored << '\n';
 
-  out << "#\n"
-      << "# Total groups found:\t" << group_stats.total << '\n';
+  s << blank
+    << p << "Total groups found:\t" << group_stats.total << '\n';
 
-  out << "# Rearrangement groups omitted due to being\n"
-      << "#   Supplementary-only:\t" << group_stats.supponly << '\n';
+  s << p << "Rearrangement groups omitted due to being\n"
+    << p << "  Supplementary-only:\t" << group_stats.supponly << '\n';
   if (min_count >= 2)
-    out<<"#   < " << min_count << " read pairs:\t" << group_stats.small << '\n';
-  out << "#   Stacked narrowly:\t" << group_stats.stacked << '\n';
+    s << p << "  < " << min_count << " read pairs:\t" << group_stats.small << '\n';
+  s << p << "  Stacked narrowly:\t" << group_stats.stacked << '\n';
 
-  out << "#\n"
-      << "# Total groups emitted:\t" << group_stats.emitted << '\n';
+  s << blank
+    << p <<  "Total groups emitted:\t" << group_stats.emitted << '\n';
 }
 
 
@@ -535,6 +538,7 @@ try {
     grouper.print_preamble(headers, preamble.str());
     grouper.group_alignments(in);
     grouper.print_trailer();
+    grouper.log_statistics(std::cerr);
   }
   else if (nfiles == 2) {
     isamstream in2(argv[optind+1]);
@@ -548,6 +552,7 @@ try {
     grouper.print_preamble(headers, preamble.str());
     grouper.group_alignments(merged);
     grouper.print_trailer();
+    grouper.log_statistics(std::cerr);
   }
   else {
     isamstream in2(argv[optind+1]);
@@ -567,6 +572,7 @@ try {
     grouper.print_preamble(headers, preamble.str());
     grouper.group_alignments(merged);
     grouper.print_trailer();
+    grouper.log_statistics(std::cerr);
   }
 
   return EXIT_SUCCESS;
