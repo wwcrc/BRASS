@@ -120,6 +120,7 @@ struct options {
   std::vector<string> ignores;
   std::vector<string> ignore_filenames;
   std::vector<string> feature_filenames;
+  std::vector<string> anchor_filenames;
   std::map<string, bool> discards;
   string default_sample;
   int max_insert;
@@ -145,6 +146,7 @@ private:
   interval_multimap<feature> ignores;
   interval_multimap<feature> filters;
   interval_multimap<feature> transposons;
+  interval_multimap<feature> anchors;
   rearr_group_set active;
   std::vector<coord_t> ref_length;
   bool discard_apparent_insertions;
@@ -165,8 +167,9 @@ private:
   } read_stats;
 
   struct {
-    unsigned long total, small, stacked, supponly, emitted;
-    void clear() { total = small = stacked = supponly = emitted = 0; }
+    unsigned long total, small, stacked, supponly, emitted, unanchored;
+    void clear()
+      { total = small = stacked = supponly = emitted = unanchored = 0; }
   } group_stats;
 
   // Returns true iff GROUP should be emitted; updates statistics accordingly.
@@ -231,6 +234,13 @@ rearrangement_grouper::rearrangement_grouper(const options& opt,
     }
   }
 
+  for (std::vector<string>::const_iterator it = opt.anchor_filenames.begin();
+       it != opt.anchor_filenames.end(); ++it) {
+    string filename = *it;
+    expand_ref(filename, ref);
+    insert(anchors, anchors, anchors, filename, filter_reads);
+  }
+
   for (size_t i = 0; i < headers.ref_size(); i++)
     ref_length[i] = headers.findseq(i).length();
 
@@ -285,6 +295,7 @@ void rearrangement_grouper::print_statistics(std::ostream& s, const char* p,
   if (min_count >= 2)
     s << p << "  < " << min_count << " read pairs:\t" << group_stats.small << '\n';
   s << p << "  Stacked narrowly:\t" << group_stats.stacked << '\n';
+  s << p << "  Neither anchored:\t" << group_stats.unanchored << '\n';
 
   s << blank
     << p <<  "Total groups emitted:\t" << group_stats.emitted << '\n';
@@ -317,6 +328,19 @@ within(interval_multimap<feature>& features, const seqinterval& aln,
   return covered + max_uncovered >= aln.length();
 }
 
+static bool intersect(interval_multimap<feature>& map,
+		      const string& name, const ::interval &region) {
+    interval_multimap<feature>::iterator_pair range =
+	map.intersecting_range(seqinterval(name, region.pos5-1, region.pos3));
+
+    for (interval_multimap<feature>::iterator it = range.first;
+	 it != range.second; ++it)
+      if (it->first.end() >= region.pos5 && it->first.start() <= region.pos3)
+	return true;
+
+    return false;
+}
+
 inline bool rearrangement_grouper::filter(rearr_group& group) {
   group_stats.total++;
 
@@ -327,6 +351,14 @@ inline bool rearrangement_grouper::filter(rearr_group& group) {
       group.readH.length() <= group.max_read_length + 1) {
     group_stats.stacked++;
     return false;
+  }
+
+  if (! anchors.empty()) {
+    if (! intersect(anchors, group.canonical.rname(), group.overlapL) &&
+	! intersect(anchors, group.canonical.mate_rname(), group.overlapH)) {
+      group_stats.unanchored++;
+      return false;
+    }
   }
 
   const alignment& aln = group.canonical;
@@ -464,6 +496,7 @@ try {
   static const char usage[] =
 "Usage: brass-group [OPTION]... FILE [FILE] [FILE]\n"
 "Options:\n"
+"  -A FILE    Keep only groups with either side intersecting regions in FILE\n"
 "  -d TYPE    Discard read pairs or groups matching condition TYPE\n"
 "  -F FILE    Read annotation features from FILE (in BED or range format)\n"
 "  -i RANGE   Omit groups in or near the locations encompassed by RANGE\n"
@@ -497,8 +530,9 @@ try {
   opt.discards["repetitive"] = false;
 
   int c;
-  while ((c = getopt(argc, argv, ":d:F:i:I:k:m:n:o:q:s:")) >= 0)
+  while ((c = getopt(argc, argv, ":A:d:F:i:I:k:m:n:o:q:s:")) >= 0)
     switch (c) {
+    case 'A':  opt.anchor_filenames.push_back(optarg);  break;
     case 'F':  opt.feature_filenames.push_back(optarg);  break;
     case 'i':  opt.ignores.push_back(optarg);  break;
     case 'I':  opt.ignore_filenames.push_back(optarg);  break;
