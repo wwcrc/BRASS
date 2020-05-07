@@ -1,5 +1,6 @@
 /**   LICENCE
 * Copyright (c) 2014-2017 Genome Research Ltd.
+* Portions copyright (C) 2018-2020 University of Glasgow.
 *
 * Author: Cancer Genome Project <cgpit@sanger.ac.uk>
 *
@@ -489,6 +490,7 @@ try {
 
   static const char copyright[] =
 "Copyright (C) 2014-2017 Genome Research Ltd.\n"
+"Portions copyright (C) 2018-2020 University of Glasgow.\n"
 "This is free software; you are free to change and redistribute it.\n"
 "There is NO WARRANTY, to the extent permitted by law.\n"
 "";
