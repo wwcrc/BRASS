@@ -103,15 +103,14 @@ inline bool natural_orientation(const alignment& aln) {
 // Returns whether ALN appears to span a small intrachromosomal insertion,
 // i.e., the two reads are on the same chromosome in the natural orientation
 // for the library type, with too short an insert.
-// (Assumes that this is the lesser read of this pair.)
 inline bool
 apparent_insertion(const alignment& aln, const readgroup_info& info) {
   // FIXME This is only right for short-insert-solexa
-  int natural = MATE_REVERSE_STRAND;
+  int natural = less_than_mate(aln)? MATE_REVERSE_STRAND : REVERSE_STRAND;
 
   return aln.rindex() == aln.mate_rindex() &&
       (aln.flags() & (REVERSE_STRAND | MATE_REVERSE_STRAND)) == natural &&
-      aln.isize() <= info.max_insert;
+      std::abs(aln.isize()) <= info.max_insert;
 }
 
 
@@ -428,16 +427,16 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
 	(within(ignores, aln_ival) || within(ignores, mate_ival)))
       { read_stats.ignored++; continue; }
 
+    const readgroup_info& info = readgroups.find(aln);
+
+    // We may want to ignore apparent small intrachromosomal insertions,
+    // which are likely to be artifacts.
+    if (discard_apparent_insertions && apparent_insertion(aln, info))
+      { read_stats.insertion++; continue; }
+
     if (less_than_mate(aln)) {
       // Process only the lesser (by location) read in each pair,
       // so that each read pair is processed only once.
-
-      const readgroup_info& info = readgroups.find(aln);
-
-      // We may want to ignore apparent small intrachromosomal insertions,
-      // which are likely to be artifacts.
-      if (discard_apparent_insertions && apparent_insertion(aln, info))
-	{ read_stats.insertion += 2; continue; }
 
       // Flush all active groups if we've hit a new reference chromosome.
       if (aln.rindex() != active.rindex()) {
