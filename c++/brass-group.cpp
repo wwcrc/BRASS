@@ -32,6 +32,7 @@
 
 // Author: John Marshall
 
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -154,15 +155,20 @@ private:
   bool discard_repeat_mapped;
   int min_count;
   int min_quality;
+  int min_clipped_length;
+  double max_polytract_frac;
+  double max_samebase_frac;
 
   std::ofstream outfile;
   std::ostream& out;
 
   struct {
     unsigned long total, proper, unmapped, low_quality, low_mate_quality,
+		  clipped_short, polytract, samebase,
 		  repeats, repetitive, ignored, insertion, near_mate;
     void clear()
       { total = proper = unmapped = low_quality = low_mate_quality =
+	  clipped_short = polytract = samebase =
 	  repeats = repetitive = ignored = insertion = near_mate = 0; }
   } read_stats;
 
@@ -200,6 +206,9 @@ rearrangement_grouper::rearrangement_grouper(const options& opt,
     discard_repeat_mapped(opt.discards.find("repetitive")->second),
     min_count(opt.min_count),
     min_quality(opt.min_quality),
+    min_clipped_length(35),
+    max_polytract_frac(0.5),
+    max_samebase_frac(0.9),
     outfile(),
     out(open_or_cout(outfile, opt.output_filename)) {
 
@@ -287,6 +296,13 @@ void rearrangement_grouper::print_statistics(std::ostream& s, const char* p,
   if (! ignores.empty())
     s << p << "  In ignored regions:\t" << read_stats.ignored << '\n';
 
+  s << p << "  Clipped to < " << min_clipped_length << "bp:\t"
+	 << read_stats.clipped_short << '\n'
+    << p << "  > " << max_polytract_frac * 100.0 << "% poly. tract:\t"
+	 << read_stats.polytract << '\n'
+    << p << "  > " << max_samebase_frac * 100.0 << "% same base:\t"
+	 << read_stats.samebase << '\n';
+
   s << blank
     << p << "Total groups found:\t" << group_stats.total << '\n';
 
@@ -327,6 +343,40 @@ within(interval_multimap<feature>& features, const seqinterval& aln,
 
   return covered + max_uncovered >= aln.length();
 }
+
+void trim_clipped(const alignment& aln, int& start, int& end) {
+  size_t cigar_len = aln.cigar_length();
+  size_t i, j;
+
+  start = end = 0;
+
+  for (i = 0; i < cigar_len; i++) {
+    cigar_op op = aln.cigar(i);
+    if (op.opcode() == SOFT_CLIP)  start += op.length();
+    else if (op.opcode() == HARD_CLIP) { }
+    else  break;
+  }
+
+  for (j = cigar_len - 1; j >= i; j--) {
+    cigar_op op = aln.cigar(j);
+    if (op.opcode() == SOFT_CLIP)  end += op.length();
+    else if (op.opcode() == HARD_CLIP) { }
+    else  break;
+  }
+}
+
+class base_count {
+public:
+  base_count() { clear(); }
+  void clear() { for (int i = 0; i < 27; i++)  count[i] = 0; }
+  size_t& operator[] (char base) { return count[index(base)]; }
+  size_t operator[] (char base) const { return count[index(base)]; }
+  size_t max_count() const { return (*std::max_element(count, &count[27])); }
+
+private:
+  static size_t index(char base) { return (base != '=')? (base - 'A') : 26; }
+  size_t count[27];
+};
 
 static bool intersect(interval_multimap<feature>& map,
 		      const string& name, const ::interval &region) {
@@ -401,9 +451,13 @@ template <typename InputSamStream>
 void rearrangement_grouper::group_alignments(InputSamStream& in) {
   alignment aln;
   seqinterval aln_ival, mate_ival;
+  string seq;
 
   while (in >> aln) {
     read_stats.total++;
+
+    // Apply symmetric read filters that discard read pairs equivalently
+    // irrespective of whether they're considering a read or its mate.
 
     int flags = aln.flags();
     if (flags & PROPER_PAIRED) { read_stats.proper++; continue; }
@@ -433,6 +487,29 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     // which are likely to be artifacts.
     if (discard_apparent_insertions && apparent_insertion(aln, info))
       { read_stats.insertion++; continue; }
+
+    int start, end;
+    trim_clipped(aln, start, end);
+    int mapped_length = aln.length() - start - end;
+
+    if (start >= 2 && end >= 2 && mapped_length < min_clipped_length)
+      { read_stats.clipped_short++; continue; }
+
+    aln.seq(seq);
+    base_count bases;
+    size_t polytract_start = start, max_polytract = 0;
+    for (size_t i = start; i < seq.length() - end; i++) {
+      bases[seq[i]]++;
+      if (i+1 >= seq.length() - end || seq[i+1] != seq[i]) {
+	max_polytract = std::max(max_polytract, i - polytract_start + 1);
+	polytract_start = i+1;
+      }
+    }
+
+    if (max_polytract > max_polytract_frac * mapped_length)
+      { read_stats.polytract++; continue; }
+    if (bases.max_count() > max_samebase_frac * mapped_length)
+      { read_stats.samebase++; continue; }
 
     if (less_than_mate(aln)) {
       // Process only the lesser (by location) read in each pair,
