@@ -515,14 +515,6 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
       // Process only the lesser (by location) read in each pair,
       // so that each read pair is processed only once.
 
-      // Flush all active groups if we've hit a new reference chromosome.
-      if (aln.rindex() != active.rindex()) {
-	rearr_group_set::iterator_pair r = active.complete_range();
-	for (rearr_group_set::iterator it = r.first; it != r.second; ++it)
-	  if (filter(*it))  out << *it << '\n';
-	active.clear();
-      }
-
       // Find the intervals subtended by the read pair, and add it
       // to any rearrangement groups that match those intervals.
       ::interval alnL(aln, aln.pos(), aln.strand(),
@@ -531,7 +523,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
 		    ref_length[aln.mate_rindex()], info);
 
       int matched = 0;
-      rearr_group_set::iterator_pair range = active.mate_range(aln);
+      rearr_group_set::iterator_pair range = active.range_lower(aln);
       rearr_group_set::iterator group = range.first;
       while (group != range.second)
 	if (group->overlapL.pos3 <= alnL.pos5 &&

@@ -207,7 +207,7 @@ std::ostream& operator<< (std::ostream& out, const rearr_group& group) {
 
 
 rearr_group_set::rearr_group_set(const collection& refseqs)
-  : lists(refseqs.ref_size()), rindex_(-1) {
+  : ref_size(refseqs.ref_size()), lists(I(ref_size-1, ref_size-1) + 1) {
 }
 
 rearr_group_set::iterator_pair rearr_group_set::complete_range() {
@@ -219,5 +219,4 @@ rearr_group_set::iterator_pair rearr_group_set::complete_range() {
 
 void rearr_group_set::clear() {
   lists[0].clear();
-  rindex_ = -1;
 }

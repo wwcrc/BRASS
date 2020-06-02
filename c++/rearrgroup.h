@@ -176,23 +176,29 @@ public:
   rearr_group_set(const collection& refseqs);
   ~rearr_group_set() { }
 
-  int rindex() const { return rindex_; }
+  // Fetch groups matching ALN (given ALN itself is less than its mate)
+  iterator_pair range_lower(const alignment& aln)
+    { std::list<rearr_group>& list = lists[I(aln.rindex(), aln.mate_rindex())];
+      return make_pair(list.begin(), list.end()); }
 
-  iterator_pair mate_range(const alignment& aln)
-    { std::list<rearr_group>& list = lists[aln.mate_rindex()];
+  // Fetch groups matching ALN (given ALN's mate is less than ALN itself)
+  iterator_pair range_higher(const alignment& aln)
+    { std::list<rearr_group>& list = lists[I(aln.mate_rindex(), aln.rindex())];
       return make_pair(list.begin(), list.end()); }
 
   iterator_pair complete_range();
   void clear();  // To be used only after complete_range()
 
-  void insert(const rearr_group& group)
-    { lists[group.mate_rindex()].push_back(group); rindex_ = group.rindex(); }
-
-  iterator erase(iterator it) { return lists[it->mate_rindex()].erase(it); }
+  void insert(const rearr_group& group) { lists[I(group)].push_back(group); }
+  iterator erase(iterator pos) { return lists[I(*pos)].erase(pos); }
 
 private:
+  // Compute 1D index into a 2D triangular half matrix (given i <= j)
+  size_t I(size_t i, size_t j) const { return i*(2*ref_size - (i+1))/2 + j; }
+  size_t I(const rearr_group& g) const { return I(g.rindex(),g.mate_rindex()); }
+
+  const size_t ref_size;
   std::vector<std::list<rearr_group> > lists;
-  int rindex_;
 };
 
 #endif
