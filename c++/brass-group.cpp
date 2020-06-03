@@ -311,7 +311,8 @@ void rearrangement_grouper::print_statistics(std::ostream& s, const char* p,
   if (min_count >= 2)
     s << p << "  < " << min_count << " read pairs:\t" << group_stats.small << '\n';
   s << p << "  Stacked narrowly:\t" << group_stats.stacked << '\n';
-  s << p << "  Neither anchored:\t" << group_stats.unanchored << '\n';
+  if (! anchors.empty())
+    s << p << "  Neither anchored:\t" << group_stats.unanchored << '\n';
 
   s << blank
     << p <<  "Total groups emitted:\t" << group_stats.emitted << '\n';
