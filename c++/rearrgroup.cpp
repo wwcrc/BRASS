@@ -146,12 +146,47 @@ rearr_group::rearr_group(alignment& aln, const interval& alnL,
   sample.readnames.insert(aln.qname());
 
   primary_count = (aln.flags() & (NONPRIMARY|SUPPLEMENTARY))? 0 : 1;
+  mate_primary_count = 0;
+  higher_count.insert(make_pair(aln.qname(), 0));
 
+  alnlist.push_back(aln);
   canonical.swap(aln);
+}
+
+void rearr_group::assign(alignment& aln, const interval& alnL,
+			 const interval& alnH, const readgroup_info& info,
+			 const readgroup_set& readgroups) {
+  overlapL = alnL;
+  overlapH = alnH;
+  readL.assign(aln.pos(), aln.pos() + aln.length());
+  readH.assign(aln.mate_pos(), aln.mate_pos() + aln.length());
+  max_insert = info.max_insert;
+  max_read_length = aln.length();
+
+  samples.assign(readgroups.samples().size(), per_sample());
+  per_sample& sample = samples[info.sample_index];
+  total_count = sample.count = 1;
+  sample.readnames.insert(aln.qname());
+
+  primary_count = (aln.flags() & (NONPRIMARY|SUPPLEMENTARY))? 0 : 1;
+  canonical.swap(aln);
+
+  // Don't reset mate_primary_count or higher_count, which are only updated
+  // by insert_mate(). Don't update alnlist.
 }
 
 void rearr_group::insert(const alignment& aln, const interval& alnL,
 			 const interval& alnH, const readgroup_info& info) {
+  reinsert(aln, alnL, alnH, info);
+  alnlist.push_back(aln);
+
+  std::string qname = aln.qname();
+  mate_iterator it = higher_count.find(qname);
+  if (it == higher_count.end())  higher_count.insert(make_pair(qname, 0));
+}
+
+void rearr_group::reinsert(const alignment& aln, const interval& alnL,
+			   const interval& alnH, const readgroup_info& info) {
 #ifndef NOT_PARANOID
   if (! (aln.rindex() == canonical.rindex() &&
 	 aln.strand() == canonical.strand() &&
@@ -175,6 +210,29 @@ void rearr_group::insert(const alignment& aln, const interval& alnL,
   }
 
   if (! (aln.flags() & (NONPRIMARY|SUPPLEMENTARY)))  primary_count++;
+}
+
+void rearr_group::insert_mate(mate_iterator hint, const alignment& aln) {
+  hint->second++;  // Refers to higher_count[aln.qname()]
+  if (! (aln.flags() & (NONPRIMARY|SUPPLEMENTARY)))  mate_primary_count++;
+}
+
+bool rearr_group::synchronise() {
+  string buf;
+  int removed = 0;
+  std::list<alignment>::iterator it = alnlist.begin();
+  while (it != alnlist.end())
+    if (higher_count[it->qname(buf)] > 0)  ++it;
+    else  it = alnlist.erase(it), ++removed;
+  return removed > 0;
+}
+
+int rearr_group::higher_total_count() const {
+  int count = 0;
+  for (std::map<string, int>::const_iterator it = higher_count.begin();
+       it != higher_count.end(); ++it)
+    if (it->second > 0)  count++;
+  return count;
 }
 
 std::ostream& operator<< (std::ostream& out, const rearr_group& group) {

@@ -96,6 +96,9 @@ struct interval {
   interval(const interval& rhs) : pos5(rhs.pos5), pos3(rhs.pos3) { }
   ~interval() { }
 
+  interval& assign(scoord_t p5, scoord_t p3)
+    { pos5 = p5; pos3 = p3; return *this; }
+
   interval(const alignment& aln, coord_t pos, int strand,
 	   coord_t ref_length, const readgroup_info& info);
 
@@ -131,10 +134,21 @@ public:
 	      const readgroup_info& info, const readgroup_set& readgroups);
   ~rearr_group() { }
 
+  void assign(alignment& aln, const interval& alnL, const interval& alnH,
+	      const readgroup_info& info, const readgroup_set& readgroups);
+
   friend std::ostream& operator<< (std::ostream&, const rearr_group&);
+
+  typedef std::map<std::string, int>::iterator mate_iterator;
 
   void insert(const alignment& aln, const interval& alnL, const interval& alnH,
 	      const readgroup_info& info);
+  void insert_mate(mate_iterator hint, const alignment& aln);
+  void reinsert(const alignment& aln, const interval& alnL,
+		const interval& alnH, const readgroup_info& info);
+
+  // Update alnlist based on mate data from insert_mate() calls
+  bool synchronise();
 
   bool
   matches(const alignment& aln, const interval& alnL, const interval& alnH) {
@@ -144,14 +158,43 @@ public:
 	   1 /* complicated thing involving $dir */;
   }
 
+  bool matches_mate(const alignment& aln, const interval& alnL,
+		    const interval& alnH, mate_iterator& hint) {
+    static std::string buf;
+    return aln.mate_strand() == canonical.strand() &&
+	   aln.strand() == canonical.mate_strand() &&
+	   intersect(overlapL, alnL) && intersect(overlapH, alnH) &&
+	   1 /* complicated thing involving $dir */ &&
+	   (hint = higher_count.find(aln.qname(buf))) != higher_count.end();
+  }
+
   int rindex() const { return canonical.rindex(); }
   int mate_rindex() const { return canonical.mate_rindex(); }
+  std::string rname() const { return canonical.rname(); }
+  std::string mate_rname() const { return canonical.mate_rname(); }
+
+  int lower_total_count() const { return total_count; }
+  int lower_primary_count() const { return primary_count; }
+  int higher_primary_count() const { return mate_primary_count; }
+  int higher_total_count() const;
+
+  bool either_side_stacked() const
+    { return readL.length() <= max_read_length + 1 ||
+	     readH.length() <= max_read_length + 1; }
+
+  void set_notes(const std::string& str) { notes = str; }
+
+  // Iterator and begin()/end() for iterating over alignments in the group
+  typedef std::list<alignment>::iterator iterator;
+  iterator begin() { return alnlist.begin(); }
+  iterator end() { return alnlist.end(); }
 
 //private: // FIXME  Decide on encapsulation of these fields
   alignment canonical;
   interval overlapL, overlapH, readL, readH;
   std::string notes;
   scoord_t max_insert;
+private:
   int max_read_length;
 
   struct per_sample {
@@ -160,7 +203,9 @@ public:
     per_sample() : count(0) { }
   };
   std::vector<per_sample> samples;
-  int total_count, primary_count;
+  int total_count, primary_count, mate_primary_count;
+  std::list<alignment> alnlist;
+  std::map<std::string, int> higher_count;
 
   typedef std::vector<per_sample>::iterator sample_iterator;
   typedef std::vector<per_sample>::const_iterator const_sample_iterator;

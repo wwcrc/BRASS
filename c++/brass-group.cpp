@@ -137,6 +137,7 @@ public:
 
   template <typename InputSamStream>
   void group_alignments(InputSamStream& in);
+  void recalculate_group(rearr_group& group);
 
   void print_preamble(const collection& headers, const string& preamble);
   void print_trailer() { out << "#\n"; print_statistics(out, "# ", "#\n"); }
@@ -176,11 +177,10 @@ private:
     unsigned long total, small, stacked, supponly, emitted, unanchored;
     void clear()
       { total = small = stacked = supponly = emitted = unanchored = 0; }
-  } group_stats;
+  } group_stats, pass1_group_stats;
 
-  // Returns true iff GROUP should be emitted; updates statistics accordingly.
-  // May update GROUP, in particular by adding notes and annotations.
-  bool filter(rearr_group& group);
+  // Methods that update GROUP by adding notes and annotations.
+  void annotate_intrachromosomal_deletions(rearr_group& group);
 
   // Returns true iff ALN (as an interval) is covered by intervals in FEATURES,
   // with up to MAX_UNCOVERED positions remaining uncovered.
@@ -255,6 +255,7 @@ rearrangement_grouper::rearrangement_grouper(const options& opt,
 
   read_stats.clear();
   group_stats.clear();
+  pass1_group_stats.clear();
 }
 
 void rearrangement_grouper::print_preamble(const collection& headers,
@@ -307,9 +308,11 @@ void rearrangement_grouper::print_statistics(std::ostream& s, const char* p,
     << p << "Total groups found:\t" << group_stats.total << '\n';
 
   s << p << "Rearrangement groups omitted due to being\n"
-    << p << "  Supplementary-only:\t" << group_stats.supponly << '\n';
+    << p << "  Supplementary-only:\t" << group_stats.supponly
+	 << "\t  (first pass: " << pass1_group_stats.supponly << ")\n";
   if (min_count >= 2)
-    s << p << "  < " << min_count << " read pairs:\t" << group_stats.small << '\n';
+    s << p << "  < " << min_count << " read pairs:\t" << group_stats.small
+	   << "\t  (first pass: " << pass1_group_stats.small << ")\n";
   s << p << "  Stacked narrowly:\t" << group_stats.stacked << '\n';
   if (! anchors.empty())
     s << p << "  Neither anchored:\t" << group_stats.unanchored << '\n';
@@ -392,26 +395,8 @@ static bool intersect(interval_multimap<feature>& map,
     return false;
 }
 
-inline bool rearrangement_grouper::filter(rearr_group& group) {
-  group_stats.total++;
-
-  if (group.primary_count == 0) { group_stats.supponly++; return false; }
-  if (group.total_count < min_count) { group_stats.small++; return false; }
-
-  if (group.readL.length() <= group.max_read_length + 1 ||
-      group.readH.length() <= group.max_read_length + 1) {
-    group_stats.stacked++;
-    return false;
-  }
-
-  if (! anchors.empty()) {
-    if (! intersect(anchors, group.canonical.rname(), group.overlapL) &&
-	! intersect(anchors, group.canonical.mate_rname(), group.overlapH)) {
-      group_stats.unanchored++;
-      return false;
-    }
-  }
-
+void
+rearrangement_grouper::annotate_intrachromosomal_deletions(rearr_group& group) {
   const alignment& aln = group.canonical;
 
   // Annotate intrachromosomal deletions that span repeats.
@@ -440,12 +425,9 @@ inline bool rearrangement_grouper::filter(rearr_group& group) {
 	if (it->second > 1)  note << '*' << it->second;
       }
 
-      group.notes = note.str();
+      group.set_notes(note.str());
     }
   }
-
-  group_stats.emitted++;
-  return true;
 }
 
 template <typename InputSamStream>
@@ -513,9 +495,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
       { read_stats.samebase++; continue; }
 
     if (less_than_mate(aln)) {
-      // Process only the lesser (by location) read in each pair,
-      // so that each read pair is processed only once.
-
+      // Process the lesser (by location) read in each pair.
       // Find the intervals subtended by the read pair, and add it
       // to any rearrangement groups that match those intervals.
       ::interval alnL(aln, aln.pos(), aln.strand(),
@@ -529,8 +509,13 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
       while (group != range.second)
 	if (group->overlapL.pos3 <= alnL.pos5 &&
 	    group->canonical.strand() == aln.strand()) {
-	  if (filter(*group))  out << *group << '\n';
-	  group = active.erase(group);
+	  // Remove any clearly too small groups immediately.
+	  if (group->lower_primary_count() == 0)
+	    { group_stats.supponly++; group = active.erase(group); }
+	  else if (group->lower_total_count() < min_count)
+	    { group_stats.small++; group = active.erase(group); }
+	  else
+	    ++group;
 	}
 	else if (group->matches(aln, alnL, alnH)) {
 	  group->insert(aln, alnL, alnH, info);
@@ -540,15 +525,82 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
 	else
 	  ++group;
 
-      if (matched == 0)
+      if (matched == 0) {
+	// If the pair is matched by no groups, create a new group.
 	active.insert(rearr_group(aln, alnL, alnH, info, readgroups));
+	group_stats.total++;
+      }
+    }
+    else {
+      // Process the greater (by location) read in each pair.
+      // Record that the mate also passed filters and add mate information
+      // to any groups that contain the read pair.
+
+      ::interval alnL(aln, aln.mate_pos(), aln.mate_strand(),
+		    ref_length[aln.mate_rindex()], info);
+      ::interval alnH(aln, aln.pos(), aln.strand(),
+		    ref_length[aln.rindex()], info);
+
+      rearr_group::mate_iterator hint;
+      rearr_group_set::iterator_pair range = active.range_higher(aln);
+      for (rearr_group_set::iterator group = range.first;
+	   group != range.second; ++group)
+	if (group->matches_mate(aln, alnL, alnH, hint))
+	  group->insert_mate(hint, aln);
     }
   }
 
-  // Flush any groups still active.
-  for (rearr_group_set::full_iterator it = active.begin();
-       it != active.end(); ++it)
-    if (filter(*it))  out << *it << '\n';
+  pass1_group_stats = group_stats;
+
+  // Apply all individual group filters to remaining groups, and recalculate
+  // group intervals (now that mate information has been supplied).
+
+  rearr_group_set::full_iterator it = active.begin();
+  while (it != active.end()) {
+    if (it->higher_primary_count() == 0) { group_stats.supponly++; goto erase; }
+    if (it->higher_total_count() < min_count) {group_stats.small++; goto erase;}
+
+    // Recalculate if the group changed during sychronisation.
+    if (it->synchronise())  recalculate_group(*it);
+
+    if (it->either_side_stacked()) { group_stats.stacked++; goto erase; }
+
+    if (! anchors.empty()) {
+      if (! intersect(anchors, it->rname(), it->overlapL) &&
+	  ! intersect(anchors, it->mate_rname(), it->overlapH))
+	{ group_stats.unanchored++; goto erase; }
+    }
+
+    ++it;
+    continue;
+
+  erase:
+    it = active.erase(it);
+  }
+
+  for (it = active.begin(); it != active.end(); ++it) {
+    // Update the group by adding any relevant notes and annotations.
+    annotate_intrachromosomal_deletions(*it);
+
+    out << *it << '\n';
+    group_stats.emitted++;
+  }
+}
+
+void rearrangement_grouper::recalculate_group(rearr_group& group) {
+  bool first = true;
+  for (rearr_group::iterator it = group.begin(); it != group.end(); ++it) {
+    const readgroup_info& info = readgroups.find(*it);
+
+    ::interval alnL(*it, it->pos(), it->strand(),
+		    ref_length[it->rindex()], info);
+    ::interval alnH(*it, it->mate_pos(), it->mate_strand(),
+		    ref_length[it->mate_rindex()], info);
+
+    if (first)  group.assign(*it, alnL, alnH, info, readgroups);
+    else  group.reinsert(*it, alnL, alnH, info);
+    first = false;
+  }
 }
 
 
