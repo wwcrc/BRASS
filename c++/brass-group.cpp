@@ -546,10 +546,9 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
   }
 
   // Flush any groups still active.
-  rearr_group_set::iterator_pair range = active.complete_range();
-  for (rearr_group_set::iterator it = range.first; it != range.second; ++it)
+  for (rearr_group_set::full_iterator it = active.begin();
+       it != active.end(); ++it)
     if (filter(*it))  out << *it << '\n';
-  active.clear();
 }
 
 

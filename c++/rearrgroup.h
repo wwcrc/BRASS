@@ -37,6 +37,7 @@
 #define REARRGROUP_H
 
 #include <algorithm>
+#include <iterator>
 #include <list>
 #include <set>
 #include <string>
@@ -173,7 +174,12 @@ public:
   typedef std::list<rearr_group>::iterator iterator;
   typedef std::pair<iterator, iterator> iterator_pair;
 
-  rearr_group_set(const collection& refseqs);
+  rearr_group_set(const collection& refseqs)
+    : ref_size(refseqs.ref_size()), lists(I(ref_size-1, ref_size-1) + 2),
+      list_sentinel(lists.end() - 1) {
+    // Vector sentinel needs to be a non-empty list
+    list_sentinel->push_front(rearr_group());
+  }
   ~rearr_group_set() { }
 
   // Fetch groups matching ALN (given ALN itself is less than its mate)
@@ -186,11 +192,50 @@ public:
     { std::list<rearr_group>& list = lists[I(aln.mate_rindex(), aln.rindex())];
       return make_pair(list.begin(), list.end()); }
 
-  iterator_pair complete_range();
-  void clear();  // To be used only after complete_range()
-
   void insert(const rearr_group& group) { lists[I(group)].push_back(group); }
   iterator erase(iterator pos) { return lists[I(*pos)].erase(pos); }
+
+  // Iterator and begin()/end() for iterating over all groups
+  class full_iterator :
+    public std::iterator<std::forward_iterator_tag, rearr_group> {
+  public:
+    typedef std::vector<std::list<rearr_group> > list_vector;
+
+    full_iterator() { }
+    full_iterator(const full_iterator& rhs) : i(rhs.i), it(rhs.it) { }
+    ~full_iterator() { }
+    full_iterator& operator= (const full_iterator& rhs)
+      { i = rhs.i; it = rhs.it; return *this; }
+
+    bool operator== (const full_iterator& rhs) const
+      { return i == rhs.i && it == rhs.it; }
+    bool operator!= (const full_iterator& rhs) const
+      { return i != rhs.i || it != rhs.it; }
+
+    rearr_group& operator* () const { return *it; }
+    rearr_group_set::iterator operator-> () const { return it; }
+
+    full_iterator& operator++ ()
+      { ++it;
+	while (it == i->end())  it = (++i)->begin();
+	return *this; }
+
+  private:
+    friend class rearr_group_set;
+    full_iterator(list_vector::iterator i0, rearr_group_set::iterator it0)
+      : i(i0), it(it0) { while (it == i->end())  it = (++i)->begin(); }
+
+    list_vector::iterator i;
+    rearr_group_set::iterator it;
+  };
+
+  full_iterator begin()
+    { return full_iterator(lists.begin(), lists.front().begin()); }
+  full_iterator end()
+    { return full_iterator(list_sentinel, list_sentinel->begin()); }
+
+  full_iterator erase(const full_iterator& pos)
+    { return full_iterator(pos.i, pos.i->erase(pos.it)); }
 
 private:
   // Compute 1D index into a 2D triangular half matrix (given i <= j)
@@ -199,6 +244,7 @@ private:
 
   const size_t ref_size;
   std::vector<std::list<rearr_group> > lists;
+  full_iterator::list_vector::iterator list_sentinel;
 };
 
 #endif

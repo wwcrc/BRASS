@@ -204,19 +204,3 @@ std::ostream& operator<< (std::ostream& out, const rearr_group& group) {
 
   return out;
 }
-
-
-rearr_group_set::rearr_group_set(const collection& refseqs)
-  : ref_size(refseqs.ref_size()), lists(I(ref_size-1, ref_size-1) + 1) {
-}
-
-rearr_group_set::iterator_pair rearr_group_set::complete_range() {
-  for (size_t i = 1; i < lists.size(); i++)
-    lists[0].splice(lists[0].end(), lists[i]);
-
-  return make_pair(lists[0].begin(), lists[0].end());
-}
-
-void rearr_group_set::clear() {
-  lists[0].clear();
-}
