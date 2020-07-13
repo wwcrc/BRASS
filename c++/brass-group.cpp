@@ -189,6 +189,8 @@ private:
   interval_multimap<feature> anchors;
   interval_multimap<feature> retrotransposons;
   rearr_group_set active;
+  interval_multimap<rearr_group*> active_by_readL;
+  interval_multimap<rearr_group*> active_by_readH;
   std::vector<coord_t> ref_length;
   bool discard_apparent_insertions;
   bool discard_within_repeats;
@@ -213,9 +215,11 @@ private:
   } read_stats;
 
   struct {
-    unsigned long total, small, stacked, supponly, emitted, unanchored;
+    unsigned long total, small, stacked, supponly, emitted, unanchored,
+		  swamped;
     void clear()
-      { total = small = stacked = supponly = emitted = unanchored = 0; }
+      { total = small = stacked = supponly = emitted = unanchored =
+	  swamped = 0; }
   } group_stats, pass1_group_stats;
 
   // Methods that update GROUP by adding notes and annotations.
@@ -231,6 +235,11 @@ private:
   // FIXME Once interval_multimap has const iterators etc, revert to const
   bool within_repeat(const seqinterval& aln)
     { return within(filters, aln, 10); }
+
+  // Returns the number of distinct reads from other groups that intersect
+  // with GROUP's read windows (either rname/readL or mate_rname/readH).
+  int count_swamping_reads(rearr_group* group, const string& group_rname,
+			   const ::interval& group_read_window);
 
   void print_statistics(std::ostream& s, const char* prefix, const char* blank);
 };
@@ -362,6 +371,7 @@ void rearrangement_grouper::print_statistics(std::ostream& s, const char* p,
   s << p << "  Stacked narrowly:\t" << group_stats.stacked << '\n';
   if (! anchors.empty())
     s << p << "  Neither anchored:\t" << group_stats.unanchored << '\n';
+  s << p << "  Swamped by others:\t" << group_stats.swamped << '\n';
 
   s << blank
     << p <<  "Total groups emitted:\t" << group_stats.emitted << '\n';
@@ -439,6 +449,47 @@ static bool intersect(interval_multimap<feature>& map,
 	return true;
 
     return false;
+}
+
+inline bool nearly_proper(const alignment& aln) {
+  return aln.rindex() == aln.mate_rindex() && natural_orientation(aln) &&
+	 std::abs(aln.isize()) <= 500;
+}
+
+int rearrangement_grouper::
+count_swamping_reads(rearr_group* group, const string& group_rname,
+		     const ::interval& group_read_window) {
+  typedef interval_multimap<rearr_group*>::iterator range_iterator;
+
+  seqinterval group_seqival = make_seqinterval(group_rname, group_read_window);
+  std::set<string> qnames;
+  string buf;
+
+  interval_multimap<rearr_group*>::iterator_pair
+      range = active_by_readL.intersecting_range(group_seqival);
+
+  for (range_iterator git = range.first; git != range.second; ++git) {
+    rearr_group* g = git->second;
+    if (intersect(g->readL, group_read_window) && g != group)
+      for (rearr_group::iterator it = g->begin(); it != g->end(); ++it) {
+	::interval rwindow(it->pos(), it->pos() + it->length());
+	if (intersect(rwindow, group_read_window) && ! nearly_proper(*it))
+	  qnames.insert(it->qname(buf));
+      }
+  }
+
+  range = active_by_readH.intersecting_range(group_seqival);
+  for (range_iterator git = range.first; git != range.second; ++git) {
+    rearr_group* g = git->second;
+    if (intersect(g->readH, group_read_window) && g != group)
+      for (rearr_group::iterator it = g->begin(); it != g->end(); ++it) {
+	::interval rwindow(it->mate_pos(), it->mate_pos() + it->length());
+	if (intersect(rwindow, group_read_window) && ! nearly_proper(*it))
+	  qnames.insert(it->qname(buf));
+      }
+  }
+
+  return qnames.size();
 }
 
 void
@@ -629,8 +680,28 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
   }
 
   std::clog << "Group filtering:\t" << std::setw(5) << elapsed << " seconds\n";
+  elapsed.restart();
 
   for (it = active.begin(); it != active.end(); ++it) {
+    active_by_readL.insert(std::make_pair(
+	make_seqinterval(it->rname(), it->readL), &*it));
+    active_by_readH.insert(std::make_pair(
+	make_seqinterval(it->mate_rname(), it->readH), &*it));
+  }
+
+  // Annotate and print out groups, skipping those that are swamped on either
+  // side by other groups based in intersecting read intervals.
+
+  std::set<string> readnamesL, readnamesH;
+  for (it = active.begin(); it != active.end(); ++it) {
+    int max_swamping =
+	std::max(count_swamping_reads(&*it, it->rname(), it->readL),
+		 count_swamping_reads(&*it, it->mate_rname(), it->readH));
+    if (max_swamping >= 2 * it->lower_total_count() &&
+	! (intersect(retrotransposons, it->rname(), it->overlapL) ||
+	   intersect(retrotransposons, it->mate_rname(), it->overlapH)))
+      { group_stats.swamped++; continue; }
+
     // Update the group by adding any relevant notes and annotations.
     annotate_intrachromosomal_deletions(*it);
 
@@ -638,6 +709,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     group_stats.emitted++;
   }
 
+  std::clog << "Swamped filter: \t" << std::setw(5) << elapsed << " seconds\n";
   std::clog << '\n';
 }
 
