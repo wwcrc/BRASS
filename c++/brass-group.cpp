@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -42,6 +43,7 @@
 #include <cerrno>
 #include <cstdlib>
 
+#include <time.h>
 #include <unistd.h>
 
 #include "cansam/sam/alignment.h"
@@ -112,6 +114,35 @@ apparent_insertion(const alignment& aln, const readgroup_info& info) {
   return aln.rindex() == aln.mate_rindex() &&
       (aln.flags() & (REVERSE_STRAND | MATE_REVERSE_STRAND)) == natural &&
       std::abs(aln.isize()) <= info.max_insert;
+}
+
+// Record and print out the time taken for various computations.
+class stopwatch {
+public:
+  stopwatch(bool started = true) : total(0), starttime(started? now() : 0) { }
+  void restart() { total = 0; starttime = now(); }
+  void start() { starttime = now(); }
+  void stop() { total += now() - starttime; starttime = 0; }
+
+  unsigned long long elapsed() const
+    { return starttime? total + now() - starttime : total; }
+
+private:
+  static unsigned long long now() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+  }
+
+  unsigned long long total, starttime;
+};
+
+std::ostream& operator<< (std::ostream& s, const stopwatch& timer) {
+  unsigned long long elapsed = timer.elapsed();
+  char fill = s.fill();
+  return s << (elapsed / 1000000000ULL) << '.'
+	   << std::setfill('0') << std::setw(9) << (elapsed % 1000000000ULL)
+	   << std::setfill(fill);
 }
 
 
@@ -435,6 +466,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
   alignment aln;
   seqinterval aln_ival, mate_ival;
   string seq;
+  stopwatch elapsed;
 
   while (in >> aln) {
     read_stats.total++;
@@ -551,6 +583,9 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
   }
 
   pass1_group_stats = group_stats;
+  std::clog << "Input & read filtering:\t"
+	    << std::setw(5) << elapsed << " seconds\n";
+  elapsed.restart();
 
   // Apply all individual group filters to remaining groups, and recalculate
   // group intervals (now that mate information has been supplied).
@@ -578,6 +613,8 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     it = active.erase(it);
   }
 
+  std::clog << "Group filtering:\t" << std::setw(5) << elapsed << " seconds\n";
+
   for (it = active.begin(); it != active.end(); ++it) {
     // Update the group by adding any relevant notes and annotations.
     annotate_intrachromosomal_deletions(*it);
@@ -585,6 +622,8 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     out << *it << '\n';
     group_stats.emitted++;
   }
+
+  std::clog << '\n';
 }
 
 void rearrangement_grouper::recalculate_group(rearr_group& group) {
@@ -696,7 +735,7 @@ try {
     grouper.print_preamble(headers, preamble.str());
     grouper.group_alignments(in);
     grouper.print_trailer();
-    grouper.log_statistics(std::cerr);
+    grouper.log_statistics(std::clog);
   }
   else if (nfiles == 2) {
     isamstream in2(argv[optind+1]);
@@ -710,7 +749,7 @@ try {
     grouper.print_preamble(headers, preamble.str());
     grouper.group_alignments(merged);
     grouper.print_trailer();
-    grouper.log_statistics(std::cerr);
+    grouper.log_statistics(std::clog);
   }
   else {
     isamstream in2(argv[optind+1]);
@@ -730,7 +769,7 @@ try {
     grouper.print_preamble(headers, preamble.str());
     grouper.group_alignments(merged);
     grouper.print_trailer();
-    grouper.log_statistics(std::cerr);
+    grouper.log_statistics(std::clog);
   }
 
   return EXIT_SUCCESS;
