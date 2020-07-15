@@ -145,6 +145,12 @@ std::ostream& operator<< (std::ostream& s, const stopwatch& timer) {
 	   << std::setfill(fill);
 }
 
+// Construct a seqinterval from a (rearrgroup.h) interval.
+inline seqinterval
+make_seqinterval(const string& rname, const ::interval& ival) {
+  return seqinterval(rname, ival.pos5 - 1, ival.pos3);
+}
+
 
 // Command-line options.
 struct options {
@@ -416,7 +422,7 @@ private:
 static bool intersect(interval_multimap<feature>& map,
 		      const string& name, const ::interval &region) {
     interval_multimap<feature>::iterator_pair range =
-	map.intersecting_range(seqinterval(name, region.pos5-1, region.pos3));
+	map.intersecting_range(make_seqinterval(name, region));
 
     for (interval_multimap<feature>::iterator it = range.first;
 	 it != range.second; ++it)
