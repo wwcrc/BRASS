@@ -159,6 +159,7 @@ struct options {
   std::vector<string> ignore_filenames;
   std::vector<string> feature_filenames;
   std::vector<string> anchor_filenames;
+  std::vector<string> retrotransposon_filenames;
   std::map<string, bool> discards;
   string default_sample;
   int max_insert;
@@ -186,6 +187,7 @@ private:
   interval_multimap<feature> filters;
   interval_multimap<feature> transposons;
   interval_multimap<feature> anchors;
+  interval_multimap<feature> retrotransposons;
   rearr_group_set active;
   std::vector<coord_t> ref_length;
   bool discard_apparent_insertions;
@@ -285,6 +287,13 @@ rearrangement_grouper::rearrangement_grouper(const options& opt,
     string filename = *it;
     expand_ref(filename, ref);
     insert(anchors, anchors, anchors, filename, filter_reads);
+  }
+
+  for (std::vector<string>::const_iterator it = opt.retrotransposon_filenames.begin();
+       it != opt.retrotransposon_filenames.end(); ++it) {
+    string filename = *it;
+    expand_ref(filename, ref);
+    insert(retrotransposons, retrotransposons, retrotransposons, filename, filter_reads);
   }
 
   for (size_t i = 0; i < headers.ref_size(); i++)
@@ -673,6 +682,7 @@ try {
 "  -n NUM     Omit groups containing fewer than NUM read pairs (default 2)\n"
 "  -o FILE    Write rearrangement groups to FILE rather than standard output\n"
 "  -q NUM     Discard read pairs with mapping quality less than NUM (default 1)\n"
+"  -R FILE    Read retrotransposon features from FILE (in BED or range format)\n"
 "  -s NAME    Use sample NAME for read pairs that are not in any read group\n"
 "Conditions:\n"
 "  insertion  Intrachromosomal insertions smaller than the insert (discarded)\n"
@@ -697,7 +707,7 @@ try {
   opt.discards["repetitive"] = false;
 
   int c;
-  while ((c = getopt(argc, argv, ":A:d:F:i:I:k:m:n:o:q:s:")) >= 0)
+  while ((c = getopt(argc, argv, ":A:d:F:i:I:k:m:n:o:q:R:s:")) >= 0)
     switch (c) {
     case 'A':  opt.anchor_filenames.push_back(optarg);  break;
     case 'F':  opt.feature_filenames.push_back(optarg);  break;
@@ -707,6 +717,7 @@ try {
     case 'n':  opt.min_count = atoi(optarg);  break;
     case 'o':  opt.output_filename = optarg;  break;
     case 'q':  opt.min_quality = atoi(optarg);  break;
+    case 'R':  opt.retrotransposon_filenames.push_back(optarg);  break;
     case 's':  opt.default_sample = optarg;  break;
 
     case 'd':
