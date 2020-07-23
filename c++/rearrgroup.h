@@ -240,6 +240,11 @@ public:
   void insert(const rearr_group& group) { lists[I(group)].push_back(group); }
   iterator erase(iterator pos) { return lists[I(*pos)].erase(pos); }
 
+  iterator transfer(std::list<rearr_group>& dest, iterator pos)
+    { iterator succ = pos; ++succ;
+      dest.splice(dest.end(), lists[I(*pos)], pos);
+      return succ; }
+
   // Iterator and begin()/end() for iterating over all groups
   class full_iterator :
     public std::iterator<std::forward_iterator_tag, rearr_group> {
@@ -281,6 +286,11 @@ public:
 
   full_iterator erase(const full_iterator& pos)
     { return full_iterator(pos.i, pos.i->erase(pos.it)); }
+
+  full_iterator transfer(std::list<rearr_group>& dest, full_iterator pos)
+    { full_iterator succ = pos; ++succ;
+      dest.splice(dest.end(), *(pos.i), pos.it);
+      return succ; }
 
 private:
   // Compute 1D index into a 2D triangular half matrix (given i <= j)

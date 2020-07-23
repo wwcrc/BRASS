@@ -189,6 +189,8 @@ private:
   interval_multimap<feature> anchors;
   interval_multimap<feature> retrotransposons;
   rearr_group_set active;
+  std::list<rearr_group> activelist;
+  interval_multimap<rearr_group*> active_by_mate;
   interval_multimap<rearr_group*> active_by_readL;
   interval_multimap<rearr_group*> active_by_readH;
   std::vector<coord_t> ref_length;
@@ -612,8 +614,13 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
 	    { group_stats.supponly++; group = active.erase(group); }
 	  else if (group->lower_total_count() < min_count)
 	    { group_stats.small++; group = active.erase(group); }
-	  else
-	    ++group;
+	  else {
+	    // Otherwise transfer the group as it is no longer active.
+	    active_by_mate.insert(std::make_pair(
+		make_seqinterval(group->mate_rname(), group->overlapH),
+		&*group));
+	    group = active.transfer(activelist, group);
+	  }
 	}
 	else if (group->matches(aln, alnL, alnH)) {
 	  group->insert(aln, alnL, alnH, info);
@@ -645,8 +652,23 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
 	   group != range.second; ++group)
 	if (group->matches_mate(aln, alnL, alnH, hint))
 	  group->insert_mate(hint, aln);
+
+      interval_multimap<rearr_group*>::iterator_pair mate_range =
+	active_by_mate.intersecting_range(make_seqinterval(aln.rname(), alnH));
+      for (interval_multimap<rearr_group*>::iterator group = mate_range.first;
+	   group != mate_range.second; ++group)
+	if (group->second->matches_mate(aln, alnL, alnH, hint))
+	  group->second->insert_mate(hint, aln);
     }
   }
+
+  // Flush any remaining untransferred groups.
+  for (rearr_group_set::full_iterator it = active.begin();
+       it != active.end();
+       it = active.transfer(activelist, it))
+    active_by_mate.insert(std::make_pair(
+	make_seqinterval(it->mate_rname(), it->overlapH),
+	&*it));
 
   pass1_group_stats = group_stats;
   std::clog << "Input & read filtering:\t"
@@ -656,8 +678,8 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
   // Apply all individual group filters to remaining groups, and recalculate
   // group intervals (now that mate information has been supplied).
 
-  rearr_group_set::full_iterator it = active.begin();
-  while (it != active.end()) {
+  std::list<rearr_group>::iterator it = activelist.begin();
+  while (it != activelist.end()) {
     if (it->higher_primary_count() == 0) { group_stats.supponly++; goto erase; }
     if (it->higher_total_count() < min_count) {group_stats.small++; goto erase;}
 
@@ -676,13 +698,13 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     continue;
 
   erase:
-    it = active.erase(it);
+    it = activelist.erase(it);
   }
 
   std::clog << "Group filtering:\t" << std::setw(5) << elapsed << " seconds\n";
   elapsed.restart();
 
-  for (it = active.begin(); it != active.end(); ++it) {
+  for (it = activelist.begin(); it != activelist.end(); ++it) {
     active_by_readL.insert(std::make_pair(
 	make_seqinterval(it->rname(), it->readL), &*it));
     active_by_readH.insert(std::make_pair(
@@ -693,7 +715,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
   // side by other groups based in intersecting read intervals.
 
   std::set<string> readnamesL, readnamesH;
-  for (it = active.begin(); it != active.end(); ++it) {
+  for (it = activelist.begin(); it != activelist.end(); ++it) {
     int max_swamping =
 	std::max(count_swamping_reads(&*it, it->rname(), it->readL),
 		 count_swamping_reads(&*it, it->mate_rname(), it->readH));

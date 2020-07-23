@@ -66,7 +66,7 @@ rearrgroup.o: rearrgroup.cpp rearrgroup.h
 version.inc: ../perl/lib/Bio/Brass.pm
 	perl -e "`grep 'our.*VERSION' $<`" -e 'print <<"EOF"'		\
 	  -e '/* Generated from lib/Bio/Brass.pm */'		\
-	  -e '#define BRASS_VERSION "$$VERSION-ww6"'	\
+	  -e '#define BRASS_VERSION "$$VERSION-ww7"'	\
 	  -e 'EOF' > $@
 
 
