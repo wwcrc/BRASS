@@ -48,7 +48,7 @@ using namespace sam;
 const char* const readgroup_set::NO_RG = "\t";
 
 readgroup_set::readgroup_set(const collection& hdrs, scoord_t default_max,
-			     string default_sample) {
+			     string default_sample, string main_sample) {
   std::map<string, int> sample_index;
 
   for (collection::const_iterator it = hdrs.begin(); it != hdrs.end(); ++it)
@@ -70,7 +70,8 @@ readgroup_set::readgroup_set(const collection& hdrs, scoord_t default_max,
       }
 
       string sample = rg.sample();
-      readgroups[rg.id_c_str()] = readgroup_info(sample, max);
+      readgroups[rg.id_c_str()] =
+	  readgroup_info(sample, (sample == main_sample), max);
       sample_index.insert(make_pair(sample, 0));
     }
 
@@ -79,7 +80,7 @@ readgroup_set::readgroup_set(const collection& hdrs, scoord_t default_max,
       throw sam::exception("No maximum insert size given for read pairs"
 			   " without a read group (-m option required");
 
-    readgroups[NO_RG] = readgroup_info(default_sample, default_max);
+    readgroups[NO_RG] = readgroup_info(default_sample, false, default_max);
     sample_index.insert(make_pair(default_sample, 0));
   }
   else if (readgroups.empty())

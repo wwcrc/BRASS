@@ -162,6 +162,7 @@ struct options {
   std::vector<string> retrotransposon_filenames;
   std::map<string, bool> discards;
   string default_sample;
+  string main_sample;
   int max_insert;
   int min_count;
   int min_quality;
@@ -183,6 +184,7 @@ public:
 
 private:
   readgroup_set readgroups;
+  int main_sample_index;
   interval_multimap<feature> ignores;
   interval_multimap<feature> filters;
   interval_multimap<feature> transposons;
@@ -248,7 +250,7 @@ private:
 
 rearrangement_grouper::rearrangement_grouper(const options& opt,
 					     const collection& headers)
-  : readgroups(headers, opt.max_insert, opt.default_sample),
+  : readgroups(headers, opt.max_insert, opt.default_sample, opt.main_sample),
     active(headers),
     ref_length(headers.ref_size()),
     discard_apparent_insertions(opt.discards.find("insertion")->second),
@@ -261,6 +263,15 @@ rearrangement_grouper::rearrangement_grouper(const options& opt,
     max_samebase_frac(0.9),
     outfile(),
     out(open_or_cout(outfile, opt.output_filename)) {
+
+  main_sample_index = -1;
+  const std::vector<string>& samples = readgroups.samples();
+  for (size_t i = 0; i < samples.size(); ++i)
+    if (samples[i] == opt.main_sample)  main_sample_index = i;
+
+  if (! opt.main_sample.empty() && main_sample_index < 0)
+    throw sam::exception("unknown sample " + opt.main_sample +
+			 " used with -S option");
 
   // Ensure that we hear about any write failures.
   out.exceptions(std::ios::failbit | std::ios::badbit);
@@ -373,7 +384,8 @@ void rearrangement_grouper::print_statistics(std::ostream& s, const char* p,
   s << p << "  Stacked narrowly:\t" << group_stats.stacked << '\n';
   if (! anchors.empty())
     s << p << "  Neither anchored:\t" << group_stats.unanchored << '\n';
-  s << p << "  Swamped by others:\t" << group_stats.swamped << '\n';
+  if (main_sample_index >= 0)
+    s << p << "  Swamped by others:\t" << group_stats.swamped << '\n';
 
   s << blank
     << p <<  "Total groups emitted:\t" << group_stats.emitted << '\n';
@@ -475,7 +487,8 @@ count_swamping_reads(rearr_group* group, const string& group_rname,
     if (intersect(g->readL, group_read_window) && g != group)
       for (rearr_group::iterator it = g->begin(); it != g->end(); ++it) {
 	::interval rwindow(it->pos(), it->pos() + it->length());
-	if (intersect(rwindow, group_read_window) && ! nearly_proper(*it))
+	if (intersect(rwindow, group_read_window) && ! nearly_proper(*it) &&
+	    readgroups.find(*it).is_main)
 	  qnames.insert(it->qname(buf));
       }
   }
@@ -486,10 +499,15 @@ count_swamping_reads(rearr_group* group, const string& group_rname,
     if (intersect(g->readH, group_read_window) && g != group)
       for (rearr_group::iterator it = g->begin(); it != g->end(); ++it) {
 	::interval rwindow(it->mate_pos(), it->mate_pos() + it->length());
-	if (intersect(rwindow, group_read_window) && ! nearly_proper(*it))
+	if (intersect(rwindow, group_read_window) && ! nearly_proper(*it) &&
+	    readgroups.find(*it).is_main)
 	  qnames.insert(it->qname(buf));
       }
   }
+
+  // Don't count any reads that are (also) in the group being filtered.
+  for (rearr_group::iterator it = group->begin(); it != group->end(); ++it)
+    qnames.erase(it->qname(buf));
 
   return qnames.size();
 }
@@ -719,7 +737,8 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     int max_swamping =
 	std::max(count_swamping_reads(&*it, it->rname(), it->readL),
 		 count_swamping_reads(&*it, it->mate_rname(), it->readH));
-    if (max_swamping >= 2 * it->lower_total_count() &&
+    if (main_sample_index >= 0 &&
+	max_swamping >= 2 * it->sample_count(main_sample_index) &&
 	! (intersect(retrotransposons, it->rname(), it->overlapL) ||
 	   intersect(retrotransposons, it->mate_rname(), it->overlapH)))
       { group_stats.swamped++; continue; }
@@ -778,6 +797,7 @@ try {
 "  -q NUM     Discard read pairs with mapping quality less than NUM (default 1)\n"
 "  -R FILE    Read retrotransposon features from FILE (in BED or range format)\n"
 "  -s NAME    Use sample NAME for read pairs that are not in any read group\n"
+"  -S NAME    Discard swamped groups according to reads from sample NAME\n"
 "Conditions:\n"
 "  insertion  Intrachromosomal insertions smaller than the insert (discarded)\n"
 "  repeat     Groups touching listed repeat features (discarded)\n"
@@ -801,7 +821,7 @@ try {
   opt.discards["repetitive"] = false;
 
   int c;
-  while ((c = getopt(argc, argv, ":A:d:F:i:I:k:m:n:o:q:R:s:")) >= 0)
+  while ((c = getopt(argc, argv, ":A:d:F:i:I:k:m:n:o:q:R:s:S:")) >= 0)
     switch (c) {
     case 'A':  opt.anchor_filenames.push_back(optarg);  break;
     case 'F':  opt.feature_filenames.push_back(optarg);  break;
@@ -813,6 +833,7 @@ try {
     case 'q':  opt.min_quality = atoi(optarg);  break;
     case 'R':  opt.retrotransposon_filenames.push_back(optarg);  break;
     case 's':  opt.default_sample = optarg;  break;
+    case 'S':  opt.main_sample = optarg;  break;
 
     case 'd':
     case 'k':

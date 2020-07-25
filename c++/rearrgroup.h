@@ -57,17 +57,18 @@ using sam::collection;
 struct readgroup_info {
   std::string sample;
   int sample_index;
+  bool is_main;
   scoord_t max_insert;
 
   readgroup_info() { }
-  readgroup_info(const std::string& s, scoord_t mi)
-    : sample(s), sample_index(0), max_insert(mi) { }
+  readgroup_info(const std::string& s, bool m, scoord_t mi)
+    : sample(s), sample_index(0), is_main(m), max_insert(mi) { }
 };
 
 class readgroup_set {
 public:
   readgroup_set(const collection& headers, scoord_t default_max,
-		std::string default_sample);
+		std::string default_sample, std::string main_sample);
   ~readgroup_set() { }
 
   const readgroup_info& find(const alignment& aln) const;
@@ -177,6 +178,7 @@ public:
   int lower_primary_count() const { return primary_count; }
   int higher_primary_count() const { return mate_primary_count; }
   int higher_total_count() const;
+  int sample_count(int sindex) const { return samples[sindex].count; }
 
   bool either_side_stacked() const
     { return readL.length() <= max_read_length + 1 ||
