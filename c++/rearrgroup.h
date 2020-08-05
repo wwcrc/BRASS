@@ -179,6 +179,8 @@ public:
   int higher_primary_count() const { return mate_primary_count; }
   int higher_total_count() const;
   int sample_count(int sindex) const { return samples[sindex].count; }
+  const std::set<std::string>& sample_reads(int sindex) const
+    { return samples[sindex].readnames; }
 
   bool either_side_stacked() const
     { return readL.length() <= max_read_length + 1 ||
