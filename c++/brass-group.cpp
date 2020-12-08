@@ -202,10 +202,16 @@ private:
   bool discard_repeat_mapped;
   int min_count;
   int min_quality;
-  int min_clipped_length;
-  int min_unswampable;
+
+  // REQ-024.14: Discard reads with large amounts of hard/soft clipping
+  int min_clippage;       // Minumum bases clipped from both ends of read
+  int min_clipped_length; // Minimum read length remaining after clipping
+
   double max_polytract_frac;
   double max_samebase_frac;
+
+  // REQ-024.16: Discard groups swamped by nonsupporting main-sample reads
+  int min_unswampable; // Rule is only applied to groups smaller than this
 
   std::ofstream outfile;
   std::ostream& out;
@@ -255,10 +261,11 @@ rearrangement_grouper::rearrangement_grouper(const options& opt,
     discard_repeat_mapped(opt.discards.find("repetitive")->second),
     min_count(opt.min_count),
     min_quality(opt.min_quality),
+    min_clippage(2),
     min_clipped_length(35),
-    min_unswampable(15),
     max_polytract_frac(0.5),
     max_samebase_frac(0.9),
+    min_unswampable(15),
     outfile(),
     out(open_or_cout(outfile, opt.output_filename)) {
 
@@ -471,7 +478,7 @@ static bool intersect(interval_multimap<feature>& map,
 
 inline bool nearly_proper(const alignment& aln) {
   return aln.rindex() == aln.mate_rindex() && natural_orientation(aln) &&
-	 std::abs(aln.isize()) <= 500;
+	 std::abs(aln.isize()) < 500;
 }
 
 size_t rearrangement_grouper::
@@ -572,7 +579,8 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
     trim_clipped(aln, start, end);
     int mapped_length = aln.length() - start - end;
 
-    if (start >= 2 && end >= 2 && mapped_length < min_clipped_length)
+    if (start >= min_clippage && end >= min_clippage &&
+	mapped_length < min_clipped_length)
       { read_stats.clipped_short++; continue; }
 
     aln.seq(seq);
@@ -643,6 +651,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
       ::interval alnH(aln, aln.pos(), aln.strand(),
 		    ref_length[aln.rindex()], info);
 
+      // Record mates of still-active groups.
       rearr_group::mate_iterator hint;
       rearr_group_set::iterator_pair range = active.range_higher(aln);
       for (rearr_group_set::iterator group = range.first;
@@ -650,6 +659,7 @@ void rearrangement_grouper::group_alignments(InputSamStream& in) {
 	if (group->matches_mate(aln, alnL, alnH, hint))
 	  group->insert_mate(hint, aln);
 
+      // Record mates of already-transferred no-longer-active groups.
       interval_multimap<rearr_group*>::iterator_pair mate_range =
 	active_by_mate.intersecting_range(make_seqinterval(aln.rname(), alnH));
       for (interval_multimap<rearr_group*>::iterator group = mate_range.first;

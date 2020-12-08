@@ -135,9 +135,6 @@ public:
 	      const readgroup_info& info, const readgroup_set& readgroups);
   ~rearr_group() { }
 
-  void assign(alignment& aln, const interval& alnL, const interval& alnH,
-	      const readgroup_info& info, const readgroup_set& readgroups);
-
   friend std::ostream& operator<< (std::ostream&, const rearr_group&);
 
   typedef std::map<std::string, int>::iterator mate_iterator;
@@ -145,6 +142,11 @@ public:
   void insert(const alignment& aln, const interval& alnL, const interval& alnH,
 	      const readgroup_info& info);
   void insert_mate(mate_iterator hint, const alignment& aln);
+
+  // Reconstruct afresh: assign()+reinsert()xN is similar to construct+insert()xN
+  // but keeps the existing alnlist, mate_primary_count, and higher_count.
+  void assign(alignment& aln, const interval& alnL, const interval& alnH,
+	      const readgroup_info& info, const readgroup_set& readgroups);
   void reinsert(const alignment& aln, const interval& alnL,
 		const interval& alnH, const readgroup_info& info);
 
